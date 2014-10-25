@@ -58,6 +58,7 @@ struct v4l2_data {
 	int resolution;
 	int framerate;
 	bool sys_timing;
+	struct v4l2_user_controls controls;
 
 	/* internal data */
 	obs_source_t *source;
@@ -216,6 +217,15 @@ static void v4l2_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, "resolution", -1);
 	obs_data_set_default_int(settings, "framerate", -1);
 	obs_data_set_default_bool(settings, "system_timing", false);
+	obs_data_set_default_bool(settings, "advanced", false);
+	obs_data_set_default_int(settings, "brightness", 128);
+	obs_data_set_default_int(settings, "contrast", 128);
+	obs_data_set_default_int(settings, "saturation", 128);
+	obs_data_set_default_int(settings, "white_balance", 4000);
+	obs_data_set_default_bool(settings, "white_balance_auto", true);
+	obs_data_set_default_int(settings, "sharpness", 128);
+	obs_data_set_default_int(settings, "focus_absolute", 0);
+	obs_data_set_default_bool(settings, "focus_auto", true);
 }
 
 #if HAVE_UDEV
@@ -289,6 +299,26 @@ static obs_properties_t *v4l2_properties(void *vptr)
 	obs_properties_add_bool(props,
 			"system_timing", obs_module_text("UseSystemTiming"));
 
+	obs_property_t *advanced = obs_properties_add_bool(props,
+			"advanced", obs_module_text("AdvancedSettings"));
+
+	obs_properties_add_int(props,
+			"brightness", obs_module_text("Brightness"), 0, 255, 1);
+	obs_properties_add_int(props,
+			"contrast", obs_module_text("Contrast"), 0, 255, 1);
+	obs_properties_add_int(props,
+			"saturation", obs_module_text("Saturation"), 0, 255, 1);
+	obs_properties_add_int(props, "white_balance",
+			obs_module_text("WhiteBalance"), 2000, 6500, 1);
+	obs_properties_add_bool(props, "white_balance_auto",
+			obs_module_text("WhiteBalanceAuto"));
+	obs_properties_add_int(props,
+			"sharpness", obs_module_text("Sharpness"), 0, 255, 1);
+	obs_properties_add_int(props, "focus_absolute",
+			obs_module_text("FocusAbsolute"), 0, 250, 5);
+	obs_properties_add_bool(props, "focus_auto",
+			obs_module_text("FocusAuto"));
+
 	settings = (data) ? obs_source_get_settings(data->source) : NULL;
 	v4l2_device_list(device_list, settings);
 
@@ -297,6 +327,7 @@ static obs_properties_t *v4l2_properties(void *vptr)
 	obs_property_set_modified_callback(format_list, format_selected);
 	obs_property_set_modified_callback(resolution_list,
 			resolution_selected);
+	obs_property_set_modified_callback(advanced, advanced_settings);
 	return props;
 }
 
@@ -357,6 +388,9 @@ static void v4l2_init(struct v4l2_data *data)
 		goto fail;
 	}
 
+	/* set user controls */
+	v4l2_set_controls(data->dev, data->controls);
+
 	/* set input */
 	if (v4l2_set_input(data->dev, &data->input) < 0) {
 		blog(LOG_ERROR, "Unable to set input %d", data->input);
@@ -415,20 +449,56 @@ fail:
 static void v4l2_update(void *vptr, obs_data_t *settings)
 {
 	V4L2_DATA(vptr);
+	bool restart = false;
 
-	v4l2_terminate(data);
+	const char *new_device = obs_data_get_string(settings, "device_id");
+	if (!data->device_id || 0 != strcmp(data->device_id, new_device)) {
+		if (data->device_id)
+			bfree(data->device_id);
+		data->device_id  = bstrdup(new_device);
+		restart = true;
+	}
+	if (data->input != obs_data_get_int(settings, "input")) {
+		data->input = obs_data_get_int(settings, "input");
+		restart = true;
+	}
+	if (data->pixfmt != obs_data_get_int(settings, "pixelformat")) {
+		restart = true;
+	}
+	if (data->resolution != obs_data_get_int(settings, "resolution")) {
+		data->resolution = obs_data_get_int(settings, "resolution");
+		restart = true;
+	}
+	if (data->framerate != obs_data_get_int(settings, "framerate")) {
+		data->framerate = obs_data_get_int(settings, "framerate");
+		restart = true;
+	}
+	if (data->sys_timing != obs_data_get_bool(settings, "system_timing")) {
+		restart = true;
+	}
 
-	if (data->device_id)
-		bfree(data->device_id);
+	data->controls.brightness = obs_data_get_int(settings, "brightness");
+	data->controls.contrast = obs_data_get_int(settings, "contrast");
+	data->controls.saturation = obs_data_get_int(settings, "saturation");
+	data->controls.white_balance = obs_data_get_int(settings,
+					"white_balance");
+	data->controls.white_balance_auto = obs_data_get_bool(settings,
+					"white_balance_auto");
+	data->controls.sharpness = obs_data_get_int(settings, "sharpness");
+	data->controls.focus_absolute = obs_data_get_int(settings,
+					"focus_absolute");
+	data->controls.focus_auto = obs_data_get_bool(settings, "focus_auto");
 
-	data->device_id  = bstrdup(obs_data_get_string(settings, "device_id"));
-	data->input      = obs_data_get_int(settings, "input");
-	data->pixfmt     = obs_data_get_int(settings, "pixelformat");
-	data->resolution = obs_data_get_int(settings, "resolution");
-	data->framerate  = obs_data_get_int(settings, "framerate");
-	data->sys_timing = obs_data_get_bool(settings, "system_timing");
-
-	v4l2_init(data);
+	if (restart) {
+		v4l2_terminate(data);
+		/* wait for v4l2_thread to terminate before updating
+		 * these parameters */
+		data->sys_timing = obs_data_get_bool(settings, "system_timing");
+		data->pixfmt = obs_data_get_int(settings, "pixelformat");
+		v4l2_init(data);
+	} else {
+		v4l2_set_controls(data->dev, data->controls);
+	}
 }
 
 static void *v4l2_create(obs_data_t *settings, obs_source_t *source)

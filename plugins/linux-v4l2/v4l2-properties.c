@@ -125,6 +125,27 @@ bool resolution_selected(obs_properties_t *props, obs_property_t *p,
 	return true;
 }
 
+bool advanced_settings(obs_properties_t *props, obs_property_t *p,
+		obs_data_t *settings)
+{
+	UNUSED_PARAMETER(p);
+	obs_property_t *properties[8];
+	properties[0] = obs_properties_get(props, "brightness");
+	properties[1] = obs_properties_get(props, "contrast");
+	properties[2] = obs_properties_get(props, "saturation");
+	properties[3] = obs_properties_get(props, "white_balance");
+	properties[4] = obs_properties_get(props, "white_balance_auto");
+	properties[5] = obs_properties_get(props, "sharpness");
+	properties[6] = obs_properties_get(props, "focus_absolute");
+	properties[7] = obs_properties_get(props, "focus_auto");
+	bool enabled = obs_data_get_bool(settings, "advanced");
+
+	for (int i = 0; i < 8; ++i) {
+		obs_property_set_visible(properties[i], enabled);
+	}
+	return true;
+}
+
 void v4l2_input_list(int_fast32_t dev, obs_property_t *prop)
 {
 	struct v4l2_input in;
@@ -349,4 +370,45 @@ void v4l2_device_list(obs_property_t *prop, obs_data_t *settings)
 
 	closedir(dirp);
 	dstr_free(&device);
+}
+
+static int set_control(int_fast32_t dev, uint_fast32_t id, int value)
+{
+	struct v4l2_control control;
+	memset(&control, 0, sizeof(control));
+
+	control.id = id;
+	control.value = value;
+	return v4l2_ioctl(dev, VIDIOC_S_CTRL, &control);
+}
+
+static int set_control_ext(int_fast32_t dev, uint_fast32_t id, int value)
+{
+	struct v4l2_ext_control control;
+	struct v4l2_ext_controls controls;
+	memset(&control, 0, sizeof(control));
+	memset(&controls, 0, sizeof(controls));
+
+	controls.ctrl_class = V4L2_CTRL_CLASS_CAMERA;
+	controls.count = 1;
+	controls.controls = &control;
+
+	control.id = id;
+	control.value = value;
+
+	return v4l2_ioctl(dev, VIDIOC_S_EXT_CTRLS, &controls);
+}
+
+void v4l2_set_controls(int_fast32_t dev, struct v4l2_user_controls controls)
+{
+	set_control(dev, V4L2_CID_BRIGHTNESS, controls.brightness);
+	set_control(dev, V4L2_CID_CONTRAST, controls.contrast);
+	set_control(dev, V4L2_CID_SATURATION, controls.saturation);
+	set_control(dev, V4L2_CID_AUTO_WHITE_BALANCE,
+				controls.white_balance_auto);
+	set_control(dev, V4L2_CID_WHITE_BALANCE_TEMPERATURE,
+				controls.white_balance);
+	set_control(dev, V4L2_CID_SHARPNESS, controls.sharpness);
+	set_control_ext(dev, V4L2_CID_FOCUS_AUTO, controls.focus_auto);
+	set_control_ext(dev, V4L2_CID_FOCUS_ABSOLUTE, controls.focus_absolute);
 }

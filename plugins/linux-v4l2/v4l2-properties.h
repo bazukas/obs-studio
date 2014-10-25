@@ -25,6 +25,20 @@ extern "C" {
 #endif
 
 /**
+ * Data structure for storing user controls
+ */
+struct v4l2_user_controls {
+	int brightness;
+	int contrast;
+	int saturation;
+	int white_balance;
+	bool white_balance_auto;
+	int sharpness;
+	int focus_absolute;
+	bool focus_auto;
+};
+
+/**
  * Enable/Disable all properties for the source.
  *
  * @note A property that should be ignored can be specified
@@ -84,6 +98,18 @@ bool resolution_selected(obs_properties_t *props, obs_property_t *p,
 		obs_data_t *settings);
 
 /*
+ * Advanced checkbox callback
+ *
+ * @param props source properties
+ * @param p property that has been changed
+ * @param settings source settings
+ *
+ * @return true if properties needs to be refreshed
+ */
+bool advanced_settings(obs_properties_t *props, obs_property_t *p,
+		obs_data_t *settings);
+
+/*
  * List inputs for device
  *
  * @param dev handle for the v4l2 device
@@ -124,6 +150,13 @@ void v4l2_framerate_list(int dev, uint_fast32_t pixelformat,
  * @param settings source settings
  */
 void v4l2_device_list(obs_property_t *prop, obs_data_t *settings);
+
+/*
+ * Apply v4l2 user controls
+ *
+ * @param controls v4l2 user control settings
+ */
+void v4l2_set_controls(int_fast32_t dev, struct v4l2_user_controls controls);
 
 #ifdef __cplusplus
 }
