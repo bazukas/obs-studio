@@ -219,6 +219,30 @@ static void v4l2_defaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, "system_timing", false);
 }
 
+/**
+ * Enable/Disable all properties for the source.
+ *
+ * @note A property that should be ignored can be specified
+ *
+ * @param props the source properties
+ * @param ignore ignore this property
+ * @param enable enable/disable all properties
+ */
+static void v4l2_props_set_enabled(obs_properties_t *props,
+		obs_property_t *ignore, bool enable)
+{
+	if (!props)
+		return;
+
+	for (obs_property_t *prop = obs_properties_first(props); prop != NULL;
+			obs_property_next(&prop)) {
+		if (prop == ignore)
+			continue;
+
+		obs_property_set_enabled(prop, enable);
+	}
+}
+
 /*
  * List available devices
  */
@@ -465,13 +489,18 @@ static void v4l2_framerate_list(int dev, uint_fast32_t pixelformat,
 static bool device_selected(obs_properties_t *props, obs_property_t *p,
 		obs_data_t *settings)
 {
-	UNUSED_PARAMETER(p);
-	int dev = v4l2_open(obs_data_get_string(settings, "device_id"),
+	int dev;
+	obs_property_t *prop;
+
+	dev  = v4l2_open(obs_data_get_string(settings, "device_id"),
 			O_RDWR | O_NONBLOCK);
+
+	v4l2_props_set_enabled(props, p, (dev == -1) ? false : true);
+
 	if (dev == -1)
 		return false;
 
-	obs_property_t *prop = obs_properties_get(props, "input");
+	prop = obs_properties_get(props, "input");
 	v4l2_input_list(dev, prop);
 	obs_property_modified(prop, settings);
 	v4l2_close(dev);
@@ -485,12 +514,15 @@ static bool input_selected(obs_properties_t *props, obs_property_t *p,
 		obs_data_t *settings)
 {
 	UNUSED_PARAMETER(p);
-	int dev = v4l2_open(obs_data_get_string(settings, "device_id"),
+	int dev;
+	obs_property_t *prop;
+
+	dev  = v4l2_open(obs_data_get_string(settings, "device_id"),
 			O_RDWR | O_NONBLOCK);
 	if (dev == -1)
 		return false;
 
-	obs_property_t *prop = obs_properties_get(props, "pixelformat");
+	prop = obs_properties_get(props, "pixelformat");
 	v4l2_format_list(dev, prop);
 	obs_property_modified(prop, settings);
 	v4l2_close(dev);
@@ -504,12 +536,15 @@ static bool format_selected(obs_properties_t *props, obs_property_t *p,
 		obs_data_t *settings)
 {
 	UNUSED_PARAMETER(p);
-	int dev = v4l2_open(obs_data_get_string(settings, "device_id"),
+	int dev;
+	obs_property_t *prop;
+
+	dev  = v4l2_open(obs_data_get_string(settings, "device_id"),
 			O_RDWR | O_NONBLOCK);
 	if (dev == -1)
 		return false;
 
-	obs_property_t *prop = obs_properties_get(props, "resolution");
+	prop = obs_properties_get(props, "resolution");
 	v4l2_resolution_list(dev, obs_data_get_int(settings, "pixelformat"),
 			prop);
 	obs_property_modified(prop, settings);
@@ -524,15 +559,18 @@ static bool resolution_selected(obs_properties_t *props, obs_property_t *p,
 		obs_data_t *settings)
 {
 	UNUSED_PARAMETER(p);
+	int dev;
 	int width, height;
-	int dev = v4l2_open(obs_data_get_string(settings, "device_id"),
+	obs_property_t *prop;
+
+	dev  = v4l2_open(obs_data_get_string(settings, "device_id"),
 			O_RDWR | O_NONBLOCK);
 	if (dev == -1)
 		return false;
 
-	obs_property_t *prop = obs_properties_get(props, "framerate");
+	prop = obs_properties_get(props, "framerate");
 	v4l2_unpack_tuple(&width, &height, obs_data_get_int(settings,
-				"resolution"));
+			"resolution"));
 	v4l2_framerate_list(dev, obs_data_get_int(settings, "pixelformat"),
 			width, height, prop);
 	obs_property_modified(prop, settings);
